@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gestione spese</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #6b7385;
+    --border: #e1e4ea; --accent: #2f6fed; --spesa: #d6453d; --entrata: #1f9d55;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171d; --card: #1d2129; --text: #e8eaf0; --muted: #98a0b3;
+      --border: #2d333f; --accent: #5b92ff; --spesa: #ff6b61; --entrata: #3ecf7e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.4rem; margin: 8px 0 16px; }
+  h2 { font-size: 1rem; margin: 0 0 12px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px; margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input[type=text] {
+    flex: 1; min-width: 200px; padding: 12px; font-size: 1rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text);
+  }
+  button, select {
+    padding: 10px 14px; font-size: 0.95rem; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--card); color: var(--text);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.small { padding: 4px 9px; font-size: 0.85rem; }
+  .hint { color: var(--muted); font-size: 0.85rem; margin-top: 8px; }
+  #msg { margin-top: 8px; min-height: 1.3em; font-size: 0.95rem; }
+  #msg.err { color: var(--spesa); }
+  #msg.ok { color: var(--entrata); }
+  .totali { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .tot { background: var(--bg); border-radius: 8px; padding: 12px; }
+  .tot .label { color: var(--muted); font-size: 0.85rem; }
+  .tot .value { font-size: 1.35rem; font-weight: 600; margin-top: 2px; }
+  .uscite .value { color: var(--spesa); }
+  .entrate .value { color: var(--entrata); }
+  .cat { display: grid; grid-template-columns: 130px 1fr 110px; gap: 10px; align-items: center; margin: 7px 0; font-size: 0.95rem; }
+  .bar { background: var(--bg); border-radius: 5px; height: 12px; overflow: hidden; }
+  .bar > div { background: var(--accent); height: 100%; }
+  .cat .amt { text-align: right; font-variant-numeric: tabular-nums; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.spesa { color: var(--spesa); }
+  td.entrata { color: var(--entrata); }
+  td select { padding: 4px 6px; font-size: 0.88rem; }
+  .empty { color: var(--muted); padding: 8px 0; }
+  .status { font-size: 0.85rem; color: var(--muted); margin-top: 10px; }
+  @media (max-width: 560px) {
+    .totali { grid-template-columns: 1fr; }
+    .cat { grid-template-columns: 100px 1fr 90px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Gestione spese</h1>
+
+  <div class="card">
+    <div class="row">
+      <input type="text" id="input" placeholder="Es. 15,30 Spesa Alimentare   oppure   +1200 Stipendio" autofocus>
+      <button class="primary" id="aggiungi">Aggiungi</button>
+    </div>
+    <div id="msg"></div>
+    <div class="hint">Formato: importo + descrizione. Per un'entrata scrivi + davanti o parole come stipendio, rimborso, vendita.</div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+      <h2 style="margin:0">Riepilogo</h2>
+      <select id="filtro" title="Periodo"></select>
+    </div>
+    <div class="totali">
+      <div class="tot uscite"><div class="label">Uscite totali</div><div class="value" id="totUscite">0,00 €</div></div>
+      <div class="tot entrate"><div class="label">Entrate totali</div><div class="value" id="totEntrate">0,00 €</div></div>
+      <div class="tot"><div class="label">Saldo</div><div class="value" id="totSaldo">0,00 €</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Uscite per categoria</h2>
+    <div id="categorie"></div>
+  </div>
+
+  <div class="card">
+    <h2>Movimenti</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Data</th><th>Tipo</th><th>Categoria</th><th style="text-align:right">Importo</th><th>Descrizione</th><th></th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div id="vuoto" class="empty" style="display:none">Nessun movimento.</div>
+  </div>
+
+  <div class="card">
+    <h2>File Excel</h2>
+    <div class="row">
+      <button id="apri">Apri file Excel</button>
+      <button id="nuovo">Nuovo file Excel</button>
+      <button id="scarica">Scarica Excel</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+</main>
+
+<input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+
+<!-- Libreria Excel: se c'è xlsx.full.min.js nella stessa cartella usa quella, altrimenti la scarica da internet -->
+<script src="xlsx.full.min.js"></script>
+<script>
+  if (typeof XLSX === "undefined") {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>');
+  }
+</script>
+<script>
+"use strict";
+
+const HEADER = ["Data", "Tipo", "Categoria", "Importo", "Descrizione"];
+const LS_KEY = "spese_movimenti_v1";
+
+const CAT_SPESA = {
+  "Alimentari": ["alimentar", "spesa", "supermercato", "cibo", "conad", "coop", "esselunga", "lidl", "eurospin"],
+  "Abbonamenti": ["abbonament", "netflix", "spotify", "prime", "disney", "palestra"],
+  "Bollette": ["bolletta", "luce", "gas", "acqua", "internet", "fibra", "telefon", "plenitude", "rifiuti"],
+  "Trasporti": ["benzina", "carburante", "gasolio", "treno", "bus", "autostrada", "taxi", "pedaggio", "assicurazione auto", "bollo"],
+  "Casa": ["affitto", "mutuo", "condominio", "mobili", "casa"],
+  "Salute": ["farmacia", "medico", "dentista", "visita", "medicin"],
+  "Svago": ["ristorante", "pizza", "bar", "cena", "cinema", "caffe", "caffè", "aperitivo", "gioco", "videogioc", "svago"],
+  "Abbigliamento": ["vestit", "scarpe", "abbigliamento", "maglia", "giacca"]
+};
+const CAT_ENTRATA = {
+  "Stipendio": ["stipendio", "paga", "salario"],
+  "Vendite": ["vendita", "venduto", "vinted", "subito"],
+  "Rimborsi": ["rimborso"],
+  "Regali": ["regalo"]
+};
+const PAROLE_ENTRATA = ["entrata", "incasso", "stipendio", "rimborso", "venduto", "vendita", "regalo", "bonus"];
+const PATTERN = /^\s*([+-]?)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro|eur)?\s*(.*)$/i;
+
+let movimenti = [];   // {data, tipo, categoria, importo, descrizione}
+let handle = null;    // file Excel collegato (solo browser con File System Access API)
+let filtro = "tutti";
+
+const $ = id => document.getElementById(id);
+const hasFS = "showOpenFilePicker" in window && "showSaveFilePicker" in window;
+const fmt = n => n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+
+/* ---------- Parser ---------- */
+function trovaCategoria(testo, tabella) {
+  const t = testo.toLowerCase();
+  for (const [cat, parole] of Object.entries(tabella)) {
+    if (t.includes(cat.toLowerCase()) || parole.some(p => t.includes(p))) return cat;
+  }
+  return null;
+}
+
+function interpreta(msg) {
+  const m = PATTERN.exec(msg);
+  if (!m) return null;
+  const [, segno, num, resto] = m;
+  const importo = parseFloat(num.replace(",", "."));
+  const testo = resto.trim();
+  const entrata = segno === "+" || PAROLE_ENTRATA.some(p => testo.toLowerCase().includes(p));
+  if (entrata) {
+    return { tipo: "Entrata", categoria: trovaCategoria(testo, CAT_ENTRATA) || "Altre entrate", importo, descrizione: testo };
+  }
+  return { tipo: "Spesa", categoria: trovaCategoria(testo, CAT_SPESA) || "Altro", importo, descrizione: testo };
+}
+
+function adesso() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* ---------- Messaggi ---------- */
+function messaggio(testo, tipo) {
+  const el = $("msg");
+  el.textContent = testo;
+  el.className = tipo || "";
+}
+function stato(testo) { $("status").textContent = testo; }
+
+function aggiornaStato() {
+  if (handle) stato(`Salvataggio automatico su: ${handle.name}`);
+  else if (hasFS) stato("Dati salvati nel browser. Con \"Apri file Excel\" o \"Nuovo file Excel\" ogni modifica viene scritta direttamente sul tuo file.");
+  else stato("Dati salvati nel browser. Questo browser non scrive direttamente sui file: usa \"Scarica Excel\" per ottenere il file aggiornato.");
+}
+
+/* ---------- Salvataggio ---------- */
+function costruisciXlsx() {
+  if (typeof XLSX === "undefined") throw new Error("Libreria Excel non disponibile (serve internet o il file xlsx.full.min.js nella stessa cartella).");
+  const righe = [HEADER, ...movimenti.map(m => [m.data, m.tipo, m.categoria, m.importo, m.descrizione])];
+  const ws = XLSX.utils.aoa_to_sheet(righe);
+  ws["!cols"] = [{ wch: 18 }, { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 40 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Movimenti");
+  return wb;
+}
+
+async function scriviSuFile() {
+  if (!handle) return;
+  try {
+    const wb = costruisciXlsx();
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const w = await handle.createWritable();
+    await w.write(buf);
+    await w.close();
+    aggiornaStato();
+  } catch (e) {
+    stato("Errore nella scrittura del file: " + e.message);
+  }
+}
+
+function salva() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(movimenti)); } catch (e) {}
+  scriviSuFile();
+}
+
+function caricaLocale() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) movimenti = JSON.parse(raw);
+  } catch (e) { movimenti = []; }
+}
+
+function leggiXlsx(buf) {
+  if (typeof XLSX === "undefined") throw new Error("Libreria Excel non disponibile (serve internet o il file xlsx.full.min.js nella stessa cartella).");
+  const wb = XLSX.read(buf, { type: "array" });
+  const ws = wb.Sheets["Movimenti"] || wb.Sheets[wb.SheetNames[0]];
+  const righe = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+  const out = [];
+  for (const r of righe.slice(1)) {
+    const importo = typeof r[3] === "number" ? r[3] : parseFloat(String(r[3]).replace(",", "."));
+    if (!r[1] || isNaN(importo)) continue;
+    out.push({
+      data: String(r[0]), tipo: r[1] === "Entrata" ? "Entrata" : "Spesa",
+      categoria: String(r[2] || (r[1] === "Entrata" ? "Altre entrate" : "Altro")),
+      importo, descrizione: String(r[4] || "")
+    });
+  }
+  return out;
+}
+
+/* ---------- Render ---------- */
+function tutteCategorie(tipo) {
+  const base = Object.keys(tipo === "Entrata" ? CAT_ENTRATA : CAT_SPESA);
+  base.push(tipo === "Entrata" ? "Altre entrate" : "Altro");
+  return base;
+}
+
+function render() {
+  // filtro per mese
+  const mesi = [...new Set(movimenti.map(m => m.data.slice(0, 7)))].filter(Boolean).sort().reverse();
+  const sel = $("filtro");
+  sel.innerHTML = "";
+  sel.add(new Option("Tutto il periodo", "tutti"));
+  mesi.forEach(m => sel.add(new Option(m, m)));
+  if (filtro !== "tutti" && !mesi.includes(filtro)) filtro = "tutti";
+  sel.value = filtro;
+
+  const visibili = [];
+  movimenti.forEach((m, i) => { if (filtro === "tutti" || m.data.startsWith(filtro)) visibili.push(i); });
+
+  let uscite = 0, entrate = 0;
+  const perCat = {};
+  visibili.forEach(i => {
+    const m = movimenti[i];
+    if (m.tipo === "Spesa") { uscite += m.importo; perCat[m.categoria] = (perCat[m.categoria] || 0) + m.importo; }
+    else entrate += m.importo;
+  });
+  $("totUscite").textContent = fmt(uscite);
+  $("totEntrate").textContent = fmt(entrate);
+  const saldo = entrate - uscite;
+  $("totSaldo").textContent = fmt(saldo);
+  $("totSaldo").style.color = saldo < 0 ? "var(--spesa)" : "var(--entrata)";
+
+  // categorie
+  const cont = $("categorie");
+  cont.innerHTML = "";
+  const ordinate = Object.entries(perCat).sort((a, b) => b[1] - a[1]);
+  if (!ordinate.length) cont.innerHTML = '<div class="empty">Nessuna spesa registrata.</div>';
+  ordinate.forEach(([cat, tot]) => {
+    const perc = uscite ? tot / uscite * 100 : 0;
+    const riga = document.createElement("div");
+    riga.className = "cat";
+    const nome = document.createElement("div"); nome.textContent = cat;
+    const bar = document.createElement("div"); bar.className = "bar";
+    const fill = document.createElement("div"); fill.style.width = perc + "%"; bar.appendChild(fill);
+    const amt = document.createElement("div"); amt.className = "amt"; amt.textContent = `${fmt(tot)}  ${perc.toFixed(0)}%`;
+    riga.append(nome, bar, amt);
+    cont.appendChild(riga);
+  });
+
+  // tabella (più recenti in alto)
+  const tbody = $("tbody");
+  tbody.innerHTML = "";
+  [...visibili].reverse().forEach(i => {
+    const m = movimenti[i];
+    const tr = document.createElement("tr");
+    const td = (testo, cls) => { const c = document.createElement("td"); c.textContent = testo; if (cls) c.className = cls; return c; };
+    tr.appendChild(td(m.data));
+    tr.appendChild(td(m.tipo, m.tipo === "Spesa" ? "spesa" : "entrata"));
+
+    const tdCat = document.createElement("td");
+    const s = document.createElement("select");
+    const opzioni = tutteCategorie(m.tipo);
+    if (!opzioni.includes(m.categoria)) opzioni.push(m.categoria);
+    opzioni.forEach(c => s.add(new Option(c, c)));
+    s.value = m.categoria;
+    s.addEventListener("change", () => { movimenti[i].categoria = s.value; salva(); render(); });
+    tdCat.appendChild(s);
+    tr.appendChild(tdCat);
+
+    tr.appendChild(td((m.tipo === "Spesa" ? "-" : "+") + fmt(m.importo), "num " + (m.tipo === "Spesa" ? "spesa" : "entrata")));
+    tr.appendChild(td(m.descrizione));
+
+    const tdDel = document.createElement("td");
+    const b = document.createElement("button");
+    b.className = "small"; b.textContent = "Elimina";
+    b.addEventListener("click", () => {
+      if (!confirm("Eliminare questo movimento?")) return;
+      movimenti.splice(i, 1); salva(); render();
+    });
+    tdDel.appendChild(b);
+    tr.appendChild(tdDel);
+    tbody.appendChild(tr);
+  });
+  $("vuoto").style.display = visibili.length ? "none" : "block";
+}
+
+/* ---------- Azioni ---------- */
+function aggiungi() {
+  const testo = $("input").value.trim();
+  if (!testo) return;
+  const r = interpreta(testo);
+  if (!r) { messaggio("Formato non riconosciuto. Esempio: 15,30 Spesa Alimentare", "err"); return; }
+  movimenti.push({ data: adesso(), ...r });
+  salva();
+  $("input").value = "";
+  messaggio(`Aggiunto: ${r.tipo} | ${r.categoria} | ${fmt(r.importo)}`, "ok");
+  render();
+}
+
+const TIPI_FILE = [{ description: "File Excel", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } }];
+
+function sostituisciDati(nuovi) {
+  if (movimenti.length && !confirm("Sostituire i movimenti attuali con quelli del file?")) return false;
+  movimenti = nuovi;
+  return true;
+}
+
+async function apriFile() {
+  try {
+    if (hasFS) {
+      const [h] = await window.showOpenFilePicker({ types: TIPI_FILE, multiple: false });
+      await h.requestPermission({ mode: "readwrite" });
+      const file = await h.getFile();
+      const nuovi = leggiXlsx(await file.arrayBuffer());
+      if (!sostituisciDati(nuovi)) return;
+      handle = h;
+      salva();
+    } else {
+      $("fileInput").click();
+      return;
+    }
+    messaggio("File caricato.", "ok");
+    aggiornaStato();
+    render();
+  } catch (e) {
+    if (e.name !== "AbortError") messaggio("Errore: " + e.message, "err");
+  }
+}
+
+async function nuovoFile() {
+  if (!hasFS) { messaggio("Questo browser non può creare file direttamente: usa \"Scarica Excel\".", "err"); return; }
+  try {
+    const h = await window.showSaveFilePicker({ suggestedName: "spese.xlsx", types: TIPI_FILE });
+    handle = h;
+    await scriviSuFile();
+    messaggio("File creato e collegato.", "ok");
+    aggiornaStato();
+  } catch (e) {
+    if (e.name !== "AbortError") messaggio("Errore: " + e.message, "err");
+  }
+}
+
+function scarica() {
+  try {
+    XLSX.writeFile(costruisciXlsx(), "spese.xlsx");
+  } catch (e) {
+    messaggio("Errore: " + e.message, "err");
+  }
+}
+
+$("fileInput").addEventListener("change", async ev => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  try {
+    const nuovi = leggiXlsx(await f.arrayBuffer());
+    if (!sostituisciDati(nuovi)) return;
+    salva();
+    messaggio("File caricato. Usa \"Scarica Excel\" per salvare le modifiche.", "ok");
+    render();
+  } catch (e) {
+    messaggio("Errore: " + e.message, "err");
+  }
+});
+
+$("aggiungi").addEventListener("click", aggiungi);
+$("input").addEventListener("keydown", e => { if (e.key === "Enter") aggiungi(); });
+$("filtro").addEventListener("change", e => { filtro = e.target.value; render(); });
+$("apri").addEventListener("click", apriFile);
+$("nuovo").addEventListener("click", nuovoFile);
+$("scarica").addEventListener("click", scarica);
+
+caricaLocale();
+aggiornaStato();
+render();
+</script>
+</body>
+</html>
